@@ -1,0 +1,134 @@
+---
+title: "stackoverflow survey"
+author: "Ravi Hela"
+date: "30/09/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+stackoverflow <- read_csv("Data_Science/supervised-ML-case-studies-course-master/data/stackoverflow.csv")
+
+# Print stackoverflow
+glimpse(stackoverflow)
+
+# First count for Remote
+stackoverflow %>% 
+    count(Remote, sort = TRUE)
+
+# then count for Country
+stackoverflow %>% 
+    count(Country, sort = TRUE)
+
+```
+```{r}
+
+ggplot(stackoverflow, aes(Remote, YearsCodedJob)) +
+    geom_boxplot() +
+    labs(x = NULL,y = "Years of professional coding experience")
+
+```
+
+```{r}
+stackoverflow <- stackoverflow %>%
+    mutate(Remote = factor(Remote, levels = c("Remote", "Not remote")))
+
+# Build a simple logistic regression model
+simple_glm <- stackoverflow %>%
+        select(-Respondent) %>%
+        glm(Remote ~ .,
+            family = "binomial",
+            data = .)
+
+
+# Print the summary of the model
+summary(simple_glm)
+```
+
+
+```{r}
+# Load rsample
+library(rsample)
+
+# Create stack_select dataset
+stack_select <- stackoverflow %>%
+    select(-Respondent)
+
+# Split the data into training and testing sets
+set.seed(1234)
+stack_split <- stackoverflow %>%
+    initial_split(0.8,
+                  strata = "Remote")
+
+stack_train <- training(stack_split)
+stack_test <- testing(stack_split)
+```
+
+
+```{r}
+up_train <- upSample(x = select(stack_train, -Remote),
+                     y = stack_train$Remote,
+                     yname = "Remote") %>%
+    as_tibble()
+
+# Count the number of each type of Remote employee
+up_train %>%
+    count(Remote)
+```
+
+
+```{r}
+stack_glm <- train(Remote ~ ., method = "glm", family = "binomial",
+                   data = stack_train,
+                   trControl = trainControl(method = "boot",
+                                            sampling = "up"))
+
+# Print the model object
+stack_glm
+```
+
+
+```{r}
+stack_rf <- train(Remote ~ ., method = "rf", 
+                  data = stack_train,
+                  trControl = trainControl(method = "boot",
+                                           sampling = "up"))
+
+# Print the model object
+stack_rf
+```
+
+
+```{r}
+# Confusion matrix for logistic regression model
+stack_test %>%
+    mutate(`Logistic regression` = predict(stack_glm, stack_test)) %>%
+    conf_mat(truth = Remote, estimate = "Logistic regression")
+```
+
+
+```{r}
+stack_test %>%
+    mutate(`Random forest` = predict(stack_rf, stack_test)) %>%
+    conf_mat(truth = Remote, estimate = "Random forest")
+```
+
+
+```{r}
+# Predict values
+testing_results <- stack_test %>%
+    mutate(`Logistic regression` = predict(stack_glm, stack_test),
+           `Random forest` = predict(stack_rf, stack_test))
+
+## Calculate accuracy
+accuracy(testing_results, truth = Remote, estimate = `Logistic regression`)
+accuracy(testing_results, truth = Remote, estimate = `Random forest`)
+
+## Calculate positive predict value
+ppv(testing_results, truth = Remote, estimate = `Logistic regression`)
+ppv(testing_results, truth = Remote, estimate = `Random forest`)
+
+
+```
+
